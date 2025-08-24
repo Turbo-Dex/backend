@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: ./terraform   
+        working-directory: ./Azureinfra/terraform   
 
     env:
       ARM_CLIENT_ID: ${{ secrets.ARM_CLIENT_ID }}
@@ -60,4 +60,4 @@ jobs:
         run: ls -Rla
 
       - name: Run Ansible playbook (dry-run)
-        run: ansible-playbook ansible/playbooks/site.yml -i ansible/inventory.ini --check
+        run: ansible-playbook Azureinfra/ansible/playbooks/site.yml -i Azureinfra/ansible/inventory.ini --check
