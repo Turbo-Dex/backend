@@ -10,44 +10,45 @@
 # ----------------------------
 
 # Allow Terraform directories
-!terraform/
-!terraform/*.tf
-!terraform/*.tfvars
-!terraform/*.tf.json
-!terraform/output.tf
-!terraform/variables.tf
-!terraform/terraform.tfvars
+!Azureinfra/
+!Azureinfra/terraform/
+!Azureinfra/terraform/*.tf
+!Azureinfra/terraform/*.tfvars
+!Azureinfra/terraform/*.tf.json
+!Azureinfra/terraform/output.tf
+!Azureinfra/terraform/variables.tf
+!Azureinfra/terraform/terraform.tfvars
 
 # Ignore sensitive Terraform state files
-terraform/terraform.tfstate
-terraform/terraform.tfstate.backup
-terraform/tfplan
+Azureinfra/terraform/terraform.tfstate
+Azureinfra/terraform/terraform.tfstate.backup
+Azureinfra/terraform/tfplan
 
 # ----------------------------
 # Ansible
 # ----------------------------
 
 # Allow Ansible directories
-!ansible/
-!ansible/group_vars/
-!ansible/playbooks/
-!ansible/playbooks/
-!ansible/playbooks/roles/
-!ansible/playbooks/roles/postgres/
-!ansible/playbooks/roles/webapp/
-!ansible/playbooks/roles/postgres/tasks/
-!ansible/playbooks/roles/webapp/tasks/
+!Azureinfra/ansible/
+!Azureinfra/ansible/group_vars/
+!Azureinfra/ansible/playbooks/
+!Azureinfra/ansible/playbooks/
+!Azureinfra/ansible/playbooks/roles/
+!Azureinfra/ansible/playbooks/roles/postgres/
+!Azureinfra/ansible/playbooks/roles/webapp/
+!Azureinfra/ansible/playbooks/roles/postgres/tasks/
+!Azureinfra/ansible/playbooks/roles/webapp/tasks/
 
 
 
 # Allow files inside Ansible
-!ansible.cfg
-!ansible/group_vars/*.yml
-!ansible/playbooks/site.yml
-!ansible/playbooks.yml
-!ansible/inventory.ini
-!ansible/playbooks/roles/postgres/tasks/main.yml
-!ansible/playbooks/roles/webapp/tasks/main.yml
+!Azureinfra/ansible/ansible.cfg
+!Azureinfra/ansible/group_vars/*.yml
+!Azureinfra/ansible/playbooks/site.yml
+!Azureinfra/ansible/playbooks.yml
+!Azureinfra/ansible/inventory.ini
+!Azureinfra/ansible/playbooks/roles/postgres/tasks/main.yml
+!Azureinfra/ansible/playbooks/roles/webapp/tasks/main.yml
 
 # ----------------------------
 # Misc
@@ -57,5 +58,5 @@ terraform/tfplan
 !.github/workflows/
 !.github/workflows/infra.yml
 
-!howto.md
+
 

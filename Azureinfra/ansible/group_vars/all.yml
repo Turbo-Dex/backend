@@ -1,0 +1,15 @@
+# === PostgreSQL ===
+db_host: "turbodex-staging-pg.postgres.database.azure.com"
+db_name: "turbodex"
+db_user: "pgadmin@turbodex-staging-pg"
+db_password: "CHANGE_ME"
+
+# === App Service ===
+webapp_name: "turbodex-staging-api"
+resource_group: "turbodex-staging-rg"
+
+# === ACR (remplacer avec terraform output) ===
+acr_login_server: "turbodexacr.azurecr.io"
+acr_username: "CHANGE_ME"
+acr_password: "CHANGE_ME"
+backend_port: 8000

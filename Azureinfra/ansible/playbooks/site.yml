@@ -1,0 +1,11 @@
+- name: Configure PostgreSQL
+  hosts: postgres
+  gather_facts: no
+  roles:
+    - postgres
+
+- name: Deploy FastAPI to WebApp
+  hosts: webapp
+  gather_facts: no
+  roles:
+    - webapp
