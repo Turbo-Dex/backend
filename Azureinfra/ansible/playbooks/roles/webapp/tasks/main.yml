@@ -1,0 +1,4 @@
+# ansible/roles/webapp/tasks/main.yml
+- name: Dummy task to test webapp role
+  debug:
+    msg: "Webapp role executed successfully!"
