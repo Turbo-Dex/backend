@@ -1,62 +1,24 @@
-# ----------------------------
-# Whitelist gitignore for Ansible + Terraform
-# ----------------------------
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+env/
+venv/
+*.egg-info/
+dist/
+build/
 
-# Ignore everything by default
-*
+# Node
+node_modules/
 
-# ----------------------------
-# Terraform
-# ----------------------------
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
 
-# Allow Terraform directories
-!Azureinfra/
-!Azureinfra/terraform/
-!Azureinfra/terraform/*.tf
-!Azureinfra/terraform/*.tfvars
-!Azureinfra/terraform/*.tf.json
-!Azureinfra/terraform/output.tf
-!Azureinfra/terraform/variables.tf
-!Azureinfra/terraform/terraform.tfvars
-
-# Ignore sensitive Terraform state files
-Azureinfra/terraform/terraform.tfstate
-Azureinfra/terraform/terraform.tfstate.backup
-Azureinfra/terraform/tfplan
-
-# ----------------------------
-# Ansible
-# ----------------------------
-
-# Allow Ansible directories
-!Azureinfra/ansible/
-!Azureinfra/ansible/group_vars/
-!Azureinfra/ansible/playbooks/
-!Azureinfra/ansible/playbooks/
-!Azureinfra/ansible/playbooks/roles/
-!Azureinfra/ansible/playbooks/roles/postgres/
-!Azureinfra/ansible/playbooks/roles/webapp/
-!Azureinfra/ansible/playbooks/roles/postgres/tasks/
-!Azureinfra/ansible/playbooks/roles/webapp/tasks/
-
-
-
-# Allow files inside Ansible
-!Azureinfra/ansible/ansible.cfg
-!Azureinfra/ansible/group_vars/*.yml
-!Azureinfra/ansible/playbooks/site.yml
-!Azureinfra/ansible/playbooks.yml
-!Azureinfra/ansible/inventory.ini
-!Azureinfra/ansible/playbooks/roles/postgres/tasks/main.yml
-!Azureinfra/ansible/playbooks/roles/webapp/tasks/main.yml
-
-# ----------------------------
-# Misc
-# ----------------------------
-!.gitignore
-!.github/
-!.github/workflows/
-!.github/workflows/infra.yml
-
-
-
+# Secrets / Terraform
+.env
+.env.*
+*.tfstate
+*.tfstate.backup
+tfplan
