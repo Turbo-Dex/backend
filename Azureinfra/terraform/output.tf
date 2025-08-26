@@ -1,9 +1,19 @@
-output "webapp_fqdn" {
-  value = "https://${azurerm_linux_web_app.api.default_hostname}"
+output "acr_login_server" {
+  value = azurerm_container_registry.acr.login_server
 }
-output "postgres_host" {
+
+output "storage_account_name" {
+  value = azurerm_storage_account.sa.name
+}
+
+output "db_host" {
   value = azurerm_postgresql_flexible_server.pg.fqdn
 }
-output "storage_account" {
-  value = azurerm_storage_account.sa.name
+
+output "aks_name" {
+  value = azurerm_kubernetes_cluster.aks.name
+}
+
+output "loadbalancer_ip" {
+  value = kubernetes_service.loadbalancer.status[0].load_balancer[0].ingress[0].ip
 }

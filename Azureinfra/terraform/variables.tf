@@ -3,13 +3,12 @@ variable "subscription_id" {
 }
 
 variable "project_name" {
-  type    = string
-  default = "turbodex"
+  type = string
 }
 
 variable "environment" {
   type    = string
-  default = "staging"
+  default = "dev"
 }
 
 variable "location" {
@@ -22,31 +21,9 @@ variable "tags" {
   default = {}
 }
 
-# App Service
-variable "appservice_sku" {
-  type    = string
-  default = "B1"
-}
-
-variable "backend_image_name" {
-  type    = string
-  default = "backend"
-}
-
-variable "backend_image_tag" {
-  type    = string
-  default = "latest"
-}
-
-variable "backend_port" {
-  type    = number
-  default = 8000
-}
-
-# PostgreSQL
+# DB
 variable "pg_admin_user" {
-  type    = string
-  default = "pgadmin"
+  type = string
 }
 
 variable "pg_admin_password" {
@@ -56,31 +33,53 @@ variable "pg_admin_password" {
 
 variable "pg_database" {
   type    = string
-  default = "turbodex"
+  default = "appdb"
 }
 
 variable "pg_sku_name" {
   type    = string
-  default = "B_Standard_B1ms" 
+  default = "B_Standard_B1ms"
 }
 
-variable "storage_account" {
-  type = string
+# AKS
+variable "aks_node_count" {
+  type    = number
+  default = 2
 }
 
-variable "resource_group_name" {
-  type = string
+variable "aks_vm_size" {
+  type    = string
+  default = "Standard_DS2_v2"
 }
 
-variable "app_service_name" {
-  type = string
+# Images Docker
+variable "blur_image_name" {
+  type    = string
+  default = "blur"
 }
 
-variable "postgres_server" {
-  type = string
+variable "blur_image_tag" {
+  type    = string
+  default = "latest"
 }
 
-variable "acr_admin_password" {
-  type      = string
-  sensitive = true
+variable "analyse_image_name" {
+  type    = string
+  default = "analyse"
+}
+
+variable "analyse_image_tag" {
+  type    = string
+  default = "latest"
+}
+
+# Ports
+variable "blur_container_port" {
+  type    = number
+  default = 8080
+}
+
+variable "analyse_container_port" {
+  type    = number
+  default = 8080
 }
