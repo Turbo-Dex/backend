@@ -35,7 +35,6 @@ async def rotate_refresh(db: AsyncIOMotorDatabase, refresh_token: str) -> dict:
         raise ValueError("invalid_refresh")
     row = await db.refresh_tokens.find_one({"user_id": payload["sub"], "jti": payload.get("jti")})
     if not row or row.get("revoked"):
-        # reuse detection: invalide tout
         await db.refresh_tokens.update_many({"user_id": payload.get("sub")}, {"$set":{"revoked": True}})
         raise ValueError("reuse_detected")
     await db.refresh_tokens.update_one({"_id": row["_id"]}, {"$set": {"revoked": True}})
@@ -53,3 +52,4 @@ def generate_recovery_code(n: int = 12) -> str:
     import secrets, string
     alphabet = string.ascii_uppercase + string.digits
     return "".join(secrets.choice(alphabet) for _ in range(n))
+

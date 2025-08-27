@@ -19,3 +19,4 @@ def create_refresh_token(sub: str) -> tuple[str, str, int]:
     payload = {"sub": sub, "jti": jti, "iat": int(iat.timestamp()), "exp": int(exp.timestamp())}
     token = jwt.encode(payload, settings.JWT_REFRESH_SECRET, algorithm="HS256")
     return token, jti, int(exp.timestamp())
+
