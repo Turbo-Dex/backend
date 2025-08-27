@@ -6,14 +6,14 @@ resource "kubernetes_secret" "app_secrets" {
     name = "app-secrets"
   }
   data = {
-    DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
+    DOCKER_REGISTRY_SERVER_URL      = var.acr_login_server
     DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
     DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
-    DB_HOST                         = azurerm_postgresql_flexible_server.pg.fqdn
-    DB_NAME                         = azurerm_postgresql_flexible_server_database.db.name
-    DB_USER                         = "${var.pg_admin_user}@${azurerm_postgresql_flexible_server.pg.name}"
+    DB_HOST                         = var.db_host
+    DB_NAME                         = var.pg_database
+    DB_USER                         = var.pg_admin_user
     DB_PASSWORD                     = var.pg_admin_password
-    STORAGE_ACCOUNT                 = azurerm_storage_account.sa.name
+    STORAGE_ACCOUNT                 = var.storage_account_name
   }
 }
 
@@ -22,7 +22,7 @@ resource "kubernetes_secret" "app_secrets" {
 ##########################################################
 resource "kubernetes_deployment" "blur" {
   metadata {
-    name = "blur-deployment"
+    name   = "blur-deployment"
     labels = { app = "blur" }
   }
 
@@ -38,10 +38,10 @@ resource "kubernetes_deployment" "blur" {
       spec {
         container {
           name  = "blur"
-          image = "turbodexacr.azurecr.io/test-python:latest"
+          image = "${var.acr_login_server}/${var.blur_image_name}:${var.blur_image_tag}"
           image_pull_policy = "Always"
           port {
-            container_port = 80
+            container_port = var.blur_container_port
           }
           env_from {
             secret_ref {
@@ -59,7 +59,7 @@ resource "kubernetes_deployment" "blur" {
 ##########################################################
 resource "kubernetes_deployment" "analyse" {
   metadata {
-    name = "analyse-deployment"
+    name   = "analyse-deployment"
     labels = { app = "analyse" }
   }
 
@@ -75,10 +75,10 @@ resource "kubernetes_deployment" "analyse" {
       spec {
         container {
           name  = "analyse"
-          image = "turbodexacr.azurecr.io/test-python:latest"
+          image = "${var.acr_login_server}/${var.analyse_image_name}:${var.analyse_image_tag}"
           image_pull_policy = "Always"
           port {
-            container_port = 80
+            container_port = var.analyse_container_port
           }
           env_from {
             secret_ref {
@@ -92,51 +92,69 @@ resource "kubernetes_deployment" "analyse" {
 }
 
 ##########################################################
-# ClusterIP Services (internes)
+# Services internes (ClusterIP)
 ##########################################################
-resource "kubernetes_service" "blur" {
+resource "kubernetes_service" "blur_service" {
   metadata { name = "blur-service" }
   spec {
     selector = { app = "blur" }
     port {
       port        = 80
-      target_port = 80
+      target_port = var.blur_container_port
     }
     type = "ClusterIP"
   }
 }
 
-resource "kubernetes_service" "analyse" {
+resource "kubernetes_service" "analyse_service" {
   metadata { name = "analyse-service" }
   spec {
     selector = { app = "analyse" }
     port {
-      port        = 80
-      target_port = 80
+      port        = 5000
+      target_port = var.analyse_container_port
     }
     type = "ClusterIP"
   }
 }
 
 ##########################################################
-# LoadBalancer Service (externe pour les deux apps)
+# LoadBalancer Blur
 ##########################################################
-resource "kubernetes_service" "app_lb" {
-  metadata { name = "app-lb" }
+resource "kubernetes_service" "blur_lb" {
+  metadata { name = "blur-lb" }
   spec {
-    type = "LoadBalancer"
-    selector = { app = "blur" } # Choisit un des pods pour le label "blur" (option: on peut faire un ingress plus tard)
+    type     = "LoadBalancer"
+    selector = { app = "blur" }
 
     port {
-      name        = "blur"
+      name        = "http"
       port        = 80
-      target_port = 80
+      target_port = var.blur_container_port
     }
 
-    port {
-      name        = "analyse"
-      port        = 81
-      target_port = 80
-    }
+    # IP fixe optionnelle
+    load_balancer_ip = var.blur_lb_ip
   }
 }
+
+##########################################################
+# LoadBalancer Analyse
+##########################################################
+resource "kubernetes_service" "analyse_lb" {
+  metadata { name = "analyse-lb" }
+  spec {
+    type     = "LoadBalancer"
+    selector = { app = "analyse" }
+
+    port {
+      name        = "http"
+      port        = 81
+      target_port = var.analyse_container_port
+    }
+
+    # IP fixe optionnelle
+    load_balancer_ip = var.analyse_lb_ip
+  }
+}
+

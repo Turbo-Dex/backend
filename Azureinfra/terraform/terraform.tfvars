@@ -23,3 +23,13 @@ postgres_user       = "turbodexadmin"
 postgres_password   = "YourSecurePassword123!"
 
 acr_admin_password  = "AnotherSecretPassword456!"
+
+
+acr_login_server      = "turbodexacr.azurecr.io"
+aks_name              = "turbodex-staging-aks"
+db_host               = "turbodex-staging-pg.postgres.database.azure.com"
+storage_account_name  = "turbodexyt3t1r"
+
+# IPs LoadBalancer optionnelles
+blur_lb_ip            = null
+analyse_lb_ip         = null
