@@ -1,9 +1,10 @@
-# Kubernetes Secret pour les credentials ACR + DB
+##########################################################
+# Kubernetes Secret pour ACR + DB
+##########################################################
 resource "kubernetes_secret" "app_secrets" {
   metadata {
     name = "app-secrets"
   }
-
   data = {
     DOCKER_REGISTRY_SERVER_URL      = azurerm_container_registry.acr.login_server
     DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
@@ -16,34 +17,31 @@ resource "kubernetes_secret" "app_secrets" {
   }
 }
 
+##########################################################
 # Deployment Blur IA
+##########################################################
 resource "kubernetes_deployment" "blur" {
   metadata {
     name = "blur-deployment"
-    labels = {
-      app = "blur"
-    }
+    labels = { app = "blur" }
   }
 
   spec {
     replicas = 2
     selector {
-      match_labels = {
-        app = "blur"
-      }
+      match_labels = { app = "blur" }
     }
     template {
       metadata {
-        labels = {
-          app = "blur"
-        }
+        labels = { app = "blur" }
       }
       spec {
         container {
           name  = "blur"
           image = "turbodexacr.azurecr.io/test-python:latest"
+          image_pull_policy = "Always"
           port {
-            container_port = var.blur_container_port
+            container_port = 80
           }
           env_from {
             secret_ref {
@@ -56,50 +54,31 @@ resource "kubernetes_deployment" "blur" {
   }
 }
 
-resource "kubernetes_service" "blur" {
-  metadata {
-    name = "blur-service"
-  }
-  spec {
-    selector = {
-      app = "blur"
-    }
-    port {
-      port        = 80
-      target_port = var.blur_container_port
-    }
-    type = "ClusterIP"
-  }
-}
-
+##########################################################
 # Deployment Analyse IA
+##########################################################
 resource "kubernetes_deployment" "analyse" {
   metadata {
     name = "analyse-deployment"
-    labels = {
-      app = "analyse"
-    }
+    labels = { app = "analyse" }
   }
 
   spec {
     replicas = 2
     selector {
-      match_labels = {
-        app = "analyse"
-      }
+      match_labels = { app = "analyse" }
     }
     template {
       metadata {
-        labels = {
-          app = "analyse"
-        }
+        labels = { app = "analyse" }
       }
       spec {
         container {
           name  = "analyse"
           image = "turbodexacr.azurecr.io/test-python:latest"
+          image_pull_policy = "Always"
           port {
-            container_port = var.analyse_container_port
+            container_port = 80
           }
           env_from {
             secret_ref {
@@ -112,43 +91,52 @@ resource "kubernetes_deployment" "analyse" {
   }
 }
 
-resource "kubernetes_service" "analyse" {
-  metadata {
-    name = "analyse-service"
-  }
+##########################################################
+# ClusterIP Services (internes)
+##########################################################
+resource "kubernetes_service" "blur" {
+  metadata { name = "blur-service" }
   spec {
-    selector = {
-      app = "analyse"
-    }
+    selector = { app = "blur" }
     port {
       port        = 80
-      target_port = var.analyse_container_port
+      target_port = 80
     }
     type = "ClusterIP"
   }
 }
 
-# LoadBalancer exposant les 2 apps
-resource "kubernetes_service" "loadbalancer" {
-  metadata {
-    name = "app-lb"
+resource "kubernetes_service" "analyse" {
+  metadata { name = "analyse-service" }
+  spec {
+    selector = { app = "analyse" }
+    port {
+      port        = 80
+      target_port = 80
+    }
+    type = "ClusterIP"
   }
+}
+
+##########################################################
+# LoadBalancer Service (externe pour les deux apps)
+##########################################################
+resource "kubernetes_service" "app_lb" {
+  metadata { name = "app-lb" }
   spec {
     type = "LoadBalancer"
+    selector = { app = "blur" } # Choisit un des pods pour le label "blur" (option: on peut faire un ingress plus tard)
 
     port {
-    name        = "blur"
-    port        = 80
-    target_port = var.blur_container_port
-    }
-    port {
-    name        = "analyse"
-    port        = 81
-    target_port = var.analyse_container_port
+      name        = "blur"
+      port        = 80
+      target_port = 80
     }
 
-    selector = {
-      app = "blur"
+    port {
+      name        = "analyse"
+      port        = 81
+      target_port = 80
     }
   }
 }

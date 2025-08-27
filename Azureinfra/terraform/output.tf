@@ -15,5 +15,6 @@ output "aks_name" {
 }
 
 output "loadbalancer_ip" {
-  value = kubernetes_service.loadbalancer.status[0].load_balancer[0].ingress[0].ip
+  value = kubernetes_service.app_lb.status[0].load_balancer[0].ingress[0].ip
 }
+
