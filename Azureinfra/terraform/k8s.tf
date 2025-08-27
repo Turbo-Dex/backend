@@ -157,3 +157,4 @@ resource "kubernetes_service" "analyse_lb" {
     load_balancer_ip = var.analyse_lb_ip
   }
 }
+
