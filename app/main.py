@@ -28,6 +28,8 @@ async def on_startup():
     print(f"[Startup] env={settings.APP_ENV}, version={settings.API_VERSION}")
     # tolérer Mongo down en dev pour éviter crash
     db = get_db()
+    print(f"[Startup] JWT_SECRET len={len(settings.JWT_SECRET)} JWT_REFRESH_SECRET len={len(settings.JWT_REFRESH_SECRET)} "
+      f"access_min={settings.JWT_ACCESS_MIN} refresh_days={settings.JWT_REFRESH_DAYS}")
     try:
         await db.command("ping")
         await ensure_indexes(db)

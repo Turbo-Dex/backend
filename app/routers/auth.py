@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, constr
 from bson import ObjectId
 from ..deps import get_db
+from ..deps_auth import get_current_user_id
 from ..services.auth_service import (
     hash_password, verify_password, normalize_username,
     issue_tokens, rotate_refresh, revoke_refresh, generate_recovery_code
@@ -88,4 +89,8 @@ async def reset(body: ResetRequest, db=Depends(get_db)):
         raise HTTPException(400, "bad_recovery")
     await db.users.update_one({"_id": user["_id"]}, {"$set":{"password_hash": hash_password(body.new_password)}})
     return {"ok": True}
+    
+@router.get("/me-test")
+async def me_test(user_id: str = Depends(get_current_user_id)):
+    return {"user_id": user_id}
 
