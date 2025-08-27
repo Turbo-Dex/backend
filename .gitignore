@@ -1,2 +1,25 @@
-git add .gitignore
-git commit -m "fix: update .gitignore"
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Node (si front dans ce repo)
+node_modules/
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/
+
+# Secrets / Terraform
+.env
+.env.*
+*.tfstate
+*.tfstate.backup
+tfplan
+

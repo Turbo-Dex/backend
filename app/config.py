@@ -15,7 +15,14 @@ class Settings(BaseSettings):
     JWT_REFRESH_DAYS: int = 14
 
     AZURE_STORAGE_CONNECTION_STRING: str = "" # Dans .env
+    AZURE_BLOB_CONTAINER_RAW: str = "raw"
+    AZURE_BLOB_CONTAINER_PROCESSED: str = "processed"
+    AZURE_BLOB_CONTAINER_GENERIC: str = "generic"
+    AZURE_BLOB_CONTAINER_AVATARS: str = "avatars"
 
+    # Uploads
+    MAX_UPLOAD_MB: int = 8
+    
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 settings = Settings()

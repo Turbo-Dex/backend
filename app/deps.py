@@ -11,3 +11,4 @@ def get_db_client() -> AsyncIOMotorClient:
 
 def get_db():
     return get_db_client()[settings.DB_NAME]
+

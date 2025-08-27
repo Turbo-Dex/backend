@@ -7,10 +7,10 @@ from ..services.auth_service import (
     issue_tokens, rotate_refresh, revoke_refresh, generate_recovery_code
 )
 from argon2 import PasswordHasher
+from datetime import datetime
 
 router = APIRouter()
 
-# --- Schemas ---
 Username = constr(pattern=r"^[a-zA-Z0-9_]{3,20}$")
 
 class SignupRequest(BaseModel):
@@ -30,14 +30,12 @@ class ResetRequest(BaseModel):
     recovery_code: str
     new_password: constr(min_length=8)
 
-# --- Endpoints ---
 @router.post("/signup")
 async def signup(body: SignupRequest, db=Depends(get_db)):
     username, username_ci = normalize_username(body.username)
     exists = await db.users.find_one({"username_ci": username_ci})
     if exists:
         raise HTTPException(409, "username_taken")
-
     rec = generate_recovery_code()
     doc = {
         "username": username,
@@ -48,7 +46,7 @@ async def signup(body: SignupRequest, db=Depends(get_db)):
         "avatar_url": None,
         "showcase": [], "followers": [], "following": [],
         "xp": 0,
-        "created_at": __import__("datetime").datetime.utcnow(),
+        "created_at": datetime.utcnow(),
     }
     res = await db.users.insert_one(doc)
     user_out = {"id": str(res.inserted_id), "username": username, "display_name": body.display_name, "avatar_url": None}
@@ -90,3 +88,4 @@ async def reset(body: ResetRequest, db=Depends(get_db)):
         raise HTTPException(400, "bad_recovery")
     await db.users.update_one({"_id": user["_id"]}, {"$set":{"password_hash": hash_password(body.new_password)}})
     return {"ok": True}
+
