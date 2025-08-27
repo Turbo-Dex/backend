@@ -7,12 +7,10 @@ variable "subscription_id" {
 
 variable "project_name" {
   type = string
-  type = string
 }
 
 variable "environment" {
   type    = string
-  default = "dev"
   default = "dev"
 }
 
@@ -43,12 +41,10 @@ variable "pg_admin_password" {
 variable "pg_database" {
   type    = string
   default = "appdb"
-  default = "appdb"
 }
 
 variable "pg_sku_name" {
   type    = string
-  default = "B_Standard_B1ms"
   default = "B_Standard_B1ms"
 }
 
