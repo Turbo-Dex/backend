@@ -1,24 +1,44 @@
-# Python
+# === Python ===
 __pycache__/
 *.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
 .venv/
 env/
 venv/
-*.egg-info/
 dist/
 build/
+*.sqlite3
 
-# Node
+# === Node ===
 node_modules/
+npm-debug.log*
+yarn-error.log*
 
-# OS / IDE
+# === Terraform ===
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfplan
+crash.log
+override.tf
+override.tf.json
+
+
+# === Environment / Secrets ===
+.env
+.env.*
+secrets/
+*.key
+*.pem
+
+# === IDE / OS ===
 .DS_Store
 .idea/
 .vscode/
-
-# Secrets / Terraform
-.env
-.env.*
-*.tfstate
-*.tfstate.backup
-tfplan
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+Thumbs.db
