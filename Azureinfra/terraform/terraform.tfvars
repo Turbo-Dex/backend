@@ -33,3 +33,9 @@ storage_account_name  = "turbodexyt3t1r"
 # IPs LoadBalancer optionnelles
 blur_lb_ip            = null
 analyse_lb_ip         = null
+
+blur_image_name = "car-blur"
+blur_image_tag  = "latest"
+analyse_image_name = "car-api"
+analyse_image_tag  = "latest"
+

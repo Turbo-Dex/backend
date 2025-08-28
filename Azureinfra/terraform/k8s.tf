@@ -149,7 +149,7 @@ resource "kubernetes_service" "analyse_lb" {
 
     port {
       name        = "http"
-      port        = 81
+      port        = 80
       target_port = var.analyse_container_port
     }
 
