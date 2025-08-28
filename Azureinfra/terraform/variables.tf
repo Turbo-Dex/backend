@@ -104,7 +104,7 @@ variable "acr_login_server" {
 # =============================
 variable "blur_container_port" {
   type    = number
-  default = 80
+  default = 5000
 }
 
 variable "analyse_container_port" {
