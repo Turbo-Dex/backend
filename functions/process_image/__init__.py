@@ -1,92 +1,87 @@
-import json, os, io, traceback
+# process_image/__init__.py
+import os, json, logging, traceback
 import azure.functions as func
-from azure.storage.blob import BlobServiceClient, ContentSettings
-from pymongo import MongoClient
-from bson import ObjectId
 
-# ----- Config depuis env -----
-AZURE_STORAGE_CS = os.environ["AzureWebJobsStorage"]
+# Facultatif: pour les tests, saute Mongo si non dispo
 MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/turbodex")
-DB_NAME = os.environ.get("DB_NAME", "turbodex")
-RAW = os.environ.get("AZURE_BLOB_CONTAINER_RAW", "raw")
+DB_NAME   = os.environ.get("DB_NAME", "turbodex")
+SKIP_MONGO = os.environ.get("MONGO_URI_SKIP", "1") == "1"  # par défaut ON en local
+
+RAW  = os.environ.get("AZURE_BLOB_CONTAINER_RAW", "raw")
 PROC = os.environ.get("AZURE_BLOB_CONTAINER_PROCESSED", "processed")
 
-# ----- Singletons -----
-_bsc = None
-_db = None
+from azure.storage.blob import BlobServiceClient, ContentSettings
+def _bsc():
+    cs = os.environ["AzureWebJobsStorage"]
+    return BlobServiceClient.from_connection_string(cs)
 
-def bsc() -> BlobServiceClient:
-    global _bsc
-    if _bsc is None:
-        _bsc = BlobServiceClient.from_connection_string(AZURE_STORAGE_CS)
-    return _bsc
-
-def db():
-    global _db
-    if _db is None:
-        _db = MongoClient(MONGO_URI)[DB_NAME]
-    return _db
-
-def public_url(base_url: str, container: str, blob_name: str) -> str:
-    return f"{base_url.rstrip('/')}/{container.strip('/')}/{blob_name.lstrip('/')}"
+def _db_or_none():
+    if SKIP_MONGO:
+        return None
+    try:
+        from pymongo import MongoClient
+        return MongoClient(MONGO_URI)[DB_NAME]
+    except Exception:
+        logging.warning("[process_image] Mongo unreachable, skip update")
+        return None
 
 def main(msg: func.QueueMessage) -> None:
-    raw = msg.get_body().decode("utf-8")
-    print(f"[process_image] message: {raw}")
+    raw = msg.get_body().decode("utf-8", errors="replace")
+    logging.info("[process_image] message=%s", raw)
 
+    # 1) parse json
     try:
-        payload = json.loads(raw)
-        post_id = payload["post_id"]
-        blob_name = payload["blob_name"]
+        data = json.loads(raw)
+        post_id   = data.get("post_id")
+        blob_name = data.get("blob_name")
+        if not blob_name:
+            logging.warning("[process_image] missing blob_name -> ack")
+            return
     except Exception as e:
-        print(f"[ERROR] bad message: {e}")
+        logging.exception("[process_image] invalid json: %s", e)
         return
 
+    # 2) tentative download du RAW (si absent -> on log et on ACK)
     try:
-        svc = bsc()
-
-        # 1) Download RAW
-        raw_blob = svc.get_blob_client(container=RAW, blob=blob_name)
+        bsc = _bsc()
+        raw_blob = bsc.get_blob_client(container=RAW, blob=blob_name)
         raw_bytes = raw_blob.download_blob().readall()
         in_ct = (raw_blob.get_blob_properties().content_settings.content_type
                  or "application/octet-stream")
+        logging.info("[process_image] downloaded %s (%d bytes, %s)", blob_name, len(raw_bytes), in_ct)
+    except Exception as e:
+        logging.warning("[process_image] cannot download blob %s: %s\n%s",
+                        blob_name, e, traceback.format_exc())
+        return  # on ACK quand même pour éviter la poison
 
-        # 2) *** Placeholder traitement *** :
-        # Ici on fait un simple passthrough (ton collègue IA remplacera).
-        out_bytes = raw_bytes
+    # 3) “traitement” no-op et upload vers processed
+    try:
+        out_bytes = raw_bytes  # no-op
         out_ct = in_ct if in_ct.startswith("image/") else "image/jpeg"
 
-        # 3) Upload PROCESSED (même nom)
-        proc_blob = svc.get_blob_client(container=PROC, blob=blob_name)
-        proc_blob.upload_blob(
-            out_bytes,
-            overwrite=True,
-            content_settings=ContentSettings(content_type=out_ct),
-        )
-
-        # 4) Update Mongo
-        dbase = db()
-        url = public_url(svc.url, PROC, blob_name)
-        res = dbase.posts.update_one(
-            {"_id": ObjectId(post_id)},
-            {"$set": {
-                "status": "processed",
-                "processed_blob_url": url,
-                "vehicle_id": None
-            }}
-        )
-        if res.matched_count != 1:
-            print(f"[WARN] post not found: {post_id}")
-        else:
-            print(f"[OK] post={post_id} processed -> {url}")
-
+        proc_blob = bsc.get_blob_client(container=PROC, blob=blob_name)
+        proc_blob.upload_blob(out_bytes, overwrite=True,
+                              content_settings=ContentSettings(content_type=out_ct))
+        logging.info("[process_image] uploaded processed/%s", blob_name)
     except Exception as e:
-        print(f"[ERROR] processing failed: {e}")
-        traceback.print_exc()
-        try:
-            db().posts.update_one(
-                {"_id": ObjectId(post_id)},
-                {"$set": {"status": "rejected"}}
-            )
-        except Exception as e2:
-            print(f"[ERROR] cannot mark rejected: {e2}")
+        logging.warning("[process_image] cannot upload processed blob: %s\n%s",
+                        e, traceback.format_exc())
+        return
+
+    # 4) update Mongo si disponible (sinon on s’arrête là)
+    db = _db_or_none()
+    if not db or not post_id:
+        logging.info("[process_image] skip mongo update (db=%s, post_id=%s)", bool(db), post_id)
+        return
+
+    try:
+        from bson import ObjectId
+        oid = ObjectId(post_id)  # peut lever InvalidId
+        url = f"{_bsc().url.rstrip('/')}/{PROC}/{blob_name}"
+        db.posts.update_one({"_id": oid},
+                            {"$set": {"status": "processed", "processed_blob_url": url}})
+        logging.info("[process_image] mongo updated post=%s -> %s", post_id, url)
+    except Exception as e:
+        logging.warning("[process_image] mongo update failed: %s\n%s",
+                        e, traceback.format_exc())
+        # on ACK quand même
