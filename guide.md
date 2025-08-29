@@ -1,6 +1,6 @@
-Absolutely! Here’s a concise **Markdown cheat sheet** summarizing all the **essential commands and steps** from our discussion to manage your Docker images, ACR, AKS deployments, and Kubernetes services. I’ve organized it step by step so it’s easy to follow.
 
-````markdown
+
+
 # TurboDex AKS & Docker Cheat Sheet
 
 ## 1. Azure CLI: Login & Subscription
@@ -14,7 +14,7 @@ az login
 
 # If no browser, use device code
 az login --use-device-code
-````
+```
 
 ---
 
@@ -35,6 +35,8 @@ az acr repository show-tags --name turbodexacr --repository <repo-name>
 
 ## 3. Docker Image: Build & Push
 
+
+### Car API
 ```bash
 # Build image locally
 docker build -t car-api .
@@ -46,24 +48,16 @@ docker tag car-api turbodexacr.azurecr.io/car-api:latest
 docker push turbodexacr.azurecr.io/car-api:latest
 ```
 
-> ⚠️ If image is huge (e.g., >7GB), use a **multi-stage build** and CPU-only PyTorch to slim it down:
+### Car API
+```bash
+# Build image locally
+docker build -t car-blur .
 
-```dockerfile
-# Example: slim Python image + CPU-only Torch
-FROM python:3.11-slim AS build
+# Tag image for ACR
+docker tag car-blur turbodexacr.azurecr.io/car-blur:latest
 
-WORKDIR /app
-RUN apt-get update && apt-get install -y --no-install-recommends build-essential libgl1 libglib2.0-0 && rm -rf /var/lib/apt/lists/*
-COPY requirements.txt .
-RUN pip install --prefix=/install --no-cache-dir -r requirements.txt
-COPY . .
-
-FROM python:3.11-slim
-WORKDIR /app
-COPY --from=build /install /usr/local
-COPY --from=build /app /app
-EXPOSE 5000
-CMD ["python", "app.py"]
+# Push image to ACR
+docker push turbodexacr.azurecr.io/car-blur:latest
 ```
 
 ---
@@ -73,7 +67,8 @@ CMD ["python", "app.py"]
 ```bash
 # Apply Terraform config
 terraform init
-terraform apply -auto-approve
+terraform plan -out=tfplan  
+terraform apply -auto-approve tfplan
 ```
 
 > Terraform outputs for AKS & services:
@@ -89,43 +84,8 @@ terraform output analyse_lb_ip
 
 ---
 
-## 5. Kubernetes Deployments
 
-```hcl
-# Example Deployment (Terraform)
-resource "kubernetes_deployment" "analyse" {
-  metadata { name = "analyse-deployment" }
-  spec {
-    replicas = 2
-    selector { match_labels = { app = "analyse" } }
-    template {
-      metadata { labels = { app = "analyse" } }
-      spec {
-        container {
-          name  = "analyse"
-          image = "${var.acr_login_server}/analyse:latest"
-          port { container_port = 5000 }
-          env_from { secret_ref { name = kubernetes_secret.app_secrets.metadata[0].name } }
-        }
-      }
-    }
-  }
-}
-
-# Services
-resource "kubernetes_service" "analyse_lb" {
-  metadata { name = "analyse-lb" }
-  spec {
-    type     = "LoadBalancer"
-    selector = { app = "analyse" }
-    port { port = 81 target_port = 5000 }
-  }
-}
-```
-
----
-
-## 6. Kubernetes Commands
+## 5. Kubernetes Commands
 
 ```bash
 # List pods
@@ -143,24 +103,21 @@ kubectl logs <pod-name>
 
 ---
 
-## 7. Test Your API
+## 6. Test Your API
 
 ```bash
-# Using curl (POST with image upload)
+# Car api
 curl -X POST "http://<loadbalancer-ip>:<port>/predict" -F "image=@voiture.jpg"
 
-# Example for Analyse service
-curl -X POST "http://4.251.17.134:81/predict" -F "image=@voiture.jpg"
+# Car blur
+curl -X POST "http://<loadbalancer-ip>/blur/" \
+  -H "accept: image/png" \
+  -H "Content-Type: multipart/form-data" \
+  -F "file=@car.jpg" \
+  --output blurred_car.png
 ```
 
-> ⚠️ Browser cannot directly do multipart POST; use **Postman/Insomnia** or a small HTML form:
 
-```html
-<form action="http://<loadbalancer-ip>:81/predict" method="post" enctype="multipart/form-data">
-  <input type="file" name="image" />
-  <input type="submit" value="Envoyer" />
-</form>
-```
 
 ---
 
@@ -178,9 +135,7 @@ curl -X POST "http://4.251.17.134:81/predict" -F "image=@voiture.jpg"
 
 ## Notes
 
-* Use **2 separate LoadBalancers** for Blur (`80`) and Analyse (`81`).
-* Keep sensitive values (DB passwords) in Kubernetes Secrets.
+* We Use **2 separate LoadBalancers** for Blur and Analyse both on port 80 of their respective loadBalancer.
 * Always reference images with full ACR URL: `turbodexacr.azurecr.io/<image>:<tag>`.
 
-```
-```
+
