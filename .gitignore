@@ -19,6 +19,7 @@ node_modules/
 # Secrets / Terraform
 .env
 .env.*
-*.tfstate
+*.tfstate*
 *.tfstate.backup
+.*
 tfplan
