@@ -138,4 +138,16 @@ curl -X POST "http://<loadbalancer-ip>/blur/" \
 * We Use **2 separate LoadBalancers** for Blur and Analyse both on port 80 of their respective loadBalancer.
 * Always reference images with full ACR URL: `turbodexacr.azurecr.io/<image>:<tag>`.
 
+## Switch account
+1. Logout from az
+2. Delete temp tf files
+3. Init then validate
+4. Apply
+5. Push docker images to ACR
+6. Faire
+```bash
+az aks update -n turbodex-staging-aks -g turbodex-staging-rg --attach-acr turbodexacr
+```
+7. New terraform apply
+   
 
