@@ -3,17 +3,21 @@
 ##########################################################
 resource "kubernetes_secret" "app_secrets" {
   metadata {
-    name = "app-secrets"
+    name      = "app-secrets"
+    namespace = "default"
   }
   data = {
     DOCKER_REGISTRY_SERVER_URL      = var.acr_login_server
     DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
     DOCKER_REGISTRY_SERVER_PASSWORD = azurerm_container_registry.acr.admin_password
-    DB_HOST                         = var.db_host
-    DB_NAME                         = var.pg_database
-    DB_USER                         = var.pg_admin_user
-    DB_PASSWORD                     = var.pg_admin_password
-    STORAGE_ACCOUNT                 = var.storage_account_name
+
+    STORAGE_ACCOUNT        = var.storage_account_name
+    BLOB_CONNECTION_STRING = azurerm_storage_account.sa.primary_connection_string
+
+    COSMOS_ENDPOINT  = azurerm_cosmosdb_account.cosmos.endpoint
+    COSMOS_KEY       = azurerm_cosmosdb_account.cosmos.primary_key
+    COSMOS_DB        = azurerm_cosmosdb_sql_database.db.name
+    COSMOS_CONTAINER = azurerm_cosmosdb_sql_container.container.name
   }
 }
 
@@ -22,8 +26,9 @@ resource "kubernetes_secret" "app_secrets" {
 ##########################################################
 resource "kubernetes_deployment" "blur" {
   metadata {
-    name   = "blur-deployment"
-    labels = { app = "blur" }
+    name      = "blur-deployment"
+    namespace = "default"
+    labels    = { app = "blur" }
   }
 
   spec {
@@ -59,8 +64,9 @@ resource "kubernetes_deployment" "blur" {
 ##########################################################
 resource "kubernetes_deployment" "analyse" {
   metadata {
-    name   = "analyse-deployment"
-    labels = { app = "analyse" }
+    name      = "analyse-deployment"
+    namespace = "default"
+    labels    = { app = "analyse" }
   }
 
   spec {
@@ -95,7 +101,10 @@ resource "kubernetes_deployment" "analyse" {
 # Services internes (ClusterIP)
 ##########################################################
 resource "kubernetes_service" "blur_service" {
-  metadata { name = "blur-service" }
+  metadata {
+    name      = "blur-service"
+    namespace = "default"
+  }
   spec {
     selector = { app = "blur" }
     port {
@@ -107,7 +116,10 @@ resource "kubernetes_service" "blur_service" {
 }
 
 resource "kubernetes_service" "analyse_service" {
-  metadata { name = "analyse-service" }
+  metadata {
+    name      = "analyse-service"
+    namespace = "default"
+  }
   spec {
     selector = { app = "analyse" }
     port {
@@ -122,7 +134,10 @@ resource "kubernetes_service" "analyse_service" {
 # LoadBalancer Blur
 ##########################################################
 resource "kubernetes_service" "blur_lb" {
-  metadata { name = "blur-lb" }
+  metadata {
+    name      = "blur-lb"
+    namespace = "default"
+  }
   spec {
     type     = "LoadBalancer"
     selector = { app = "blur" }
@@ -142,7 +157,10 @@ resource "kubernetes_service" "blur_lb" {
 # LoadBalancer Analyse
 ##########################################################
 resource "kubernetes_service" "analyse_lb" {
-  metadata { name = "analyse-lb" }
+  metadata {
+    name      = "analyse-lb"
+    namespace = "default"
+  }
   spec {
     type     = "LoadBalancer"
     selector = { app = "analyse" }
@@ -157,4 +175,3 @@ resource "kubernetes_service" "analyse_lb" {
     load_balancer_ip = var.analyse_lb_ip
   }
 }
-

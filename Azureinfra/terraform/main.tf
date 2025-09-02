@@ -61,33 +61,6 @@ resource "azurerm_container_registry" "acr" {
   tags                = var.tags
 }
 
-# PostgreSQL Flexible Server
-resource "azurerm_postgresql_flexible_server" "pg" {
-  name                   = "${var.project_name}-${var.environment}-pg"
-  resource_group_name    = azurerm_resource_group.rg.name
-  location               = var.location
-  administrator_login    = var.pg_admin_user
-  administrator_password = var.pg_admin_password
-  version                = "14"
-  sku_name               = var.pg_sku_name
-  storage_mb             = 32768
-  backup_retention_days  = 7
-  zone                   = "1"
-  tags                   = var.tags
-}
-
-resource "azurerm_postgresql_flexible_server_database" "db" {
-  name      = var.pg_database
-  server_id = azurerm_postgresql_flexible_server.pg.id
-}
-
-resource "azurerm_postgresql_flexible_server_firewall_rule" "allow_azure" {
-  name             = "allow-azure"
-  server_id        = azurerm_postgresql_flexible_server.pg.id
-  start_ip_address = "0.0.0.0"
-  end_ip_address   = "0.0.0.0"
-}
-
 # AKS Cluster
 resource "azurerm_kubernetes_cluster" "aks" {
   name                = "${var.project_name}-${var.environment}-aks"
@@ -116,3 +89,127 @@ provider "kubernetes" {
 }
 
 
+# Nom dérivé si non fourni
+locals {
+  cosmos_account_name  = coalesce(var.cosmos_account_name, "${replace(var.project_name, "-", "")}${var.environment}cosmos")
+  function_app_name    = coalesce(var.function_app_name, "${var.project_name}-${var.environment}-func")
+}
+
+resource "azurerm_cosmosdb_account" "cosmos" {
+  name                = local.cosmos_account_name
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  offer_type          = "Standard"
+  kind                = "GlobalDocumentDB"    # SQL API
+  free_tier_enabled = true
+
+  consistency_policy {
+    consistency_level = "Session"
+  }
+
+  geo_location {
+    location          = azurerm_resource_group.rg.location
+    failover_priority = 0
+  }
+
+  capabilities {
+    name = "EnableServerless"                 # évite le provisionnement RU/s en dev
+  }
+
+  tags = var.tags
+}
+
+resource "azurerm_cosmosdb_sql_database" "db" {
+  name                = var.cosmos_db_name
+  resource_group_name = azurerm_resource_group.rg.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+}
+
+resource "azurerm_cosmosdb_sql_container" "container" {
+  name                  = var.cosmos_container_name
+  resource_group_name   = azurerm_resource_group.rg.name
+  account_name          = azurerm_cosmosdb_account.cosmos.name
+  database_name         = azurerm_cosmosdb_sql_database.db.name
+  partition_key_paths   = [var.cosmos_container_pk]
+  partition_key_version = 2
+}
+
+
+# Observabilité
+resource "azurerm_log_analytics_workspace" "law" {
+  name                = "${var.project_name}-${var.environment}-law"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  sku                 = "PerGB2018"
+  retention_in_days   = 30
+  tags                = var.tags
+}
+
+resource "azurerm_application_insights" "appi" {
+  name                = "${var.project_name}-${var.environment}-appi"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  application_type    = "web"
+  workspace_id        = azurerm_log_analytics_workspace.law.id
+  tags                = var.tags
+}
+
+# Function App Linux (Consumption)
+resource "azurerm_linux_function_app" "func" {
+  name                = local.function_app_name
+  resource_group_name = azurerm_resource_group.rg.name
+  location            = azurerm_resource_group.rg.location
+
+  # Plan "consumption" implicite via sku_name = "Y1"
+  service_plan_id = azurerm_service_plan.func_plan.id
+
+  storage_account_name       = azurerm_storage_account.sa.name
+  storage_account_access_key = azurerm_storage_account.sa.primary_access_key
+  https_only                 = true
+
+  identity {
+    type = "SystemAssigned"
+  }
+
+  site_config {
+    application_stack {
+      python_version  = var.function_runtime == "python" ? "3.11" : null
+      node_version    = var.function_runtime == "node"   ? "~18"  : null
+      dotnet_version  = var.function_runtime == "dotnet" ? "v8.0" : null
+      # adapte ci-dessus selon ton runtime
+    }
+    cors {
+      allowed_origins = ["*"] # à restreindre en prod
+    }
+  }
+
+  app_settings = {
+    # Observabilité
+    APPINSIGHTS_INSTRUMENTATIONKEY        = azurerm_application_insights.appi.instrumentation_key
+    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.appi.connection_string
+    FUNCTIONS_WORKER_RUNTIME              = var.function_runtime
+    WEBSITE_RUN_FROM_PACKAGE              = "1"
+
+    # Cosmos
+    COSMOS_ENDPOINT = azurerm_cosmosdb_account.cosmos.endpoint
+    COSMOS_KEY      = azurerm_cosmosdb_account.cosmos.primary_key
+    COSMOS_DB       = azurerm_cosmosdb_sql_database.db.name
+    COSMOS_CONTAINER= azurerm_cosmosdb_sql_container.container.name
+
+    # Blob (existant)
+    BLOB_CONNECTION_STRING = azurerm_storage_account.sa.primary_connection_string
+    BLOB_CONTAINER_IMAGES  = azurerm_storage_container.images.name
+  }
+
+  tags = var.tags
+}
+
+# Plan Functions (Y1 = Consumption)
+resource "azurerm_service_plan" "func_plan" {
+  name                = "${var.project_name}-${var.environment}-funcplan"
+  location            = azurerm_resource_group.rg.location
+  resource_group_name = azurerm_resource_group.rg.name
+  os_type             = "Linux"
+  sku_name            = "Y1"   # Consumption
+  tags                = var.tags
+}

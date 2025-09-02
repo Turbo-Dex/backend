@@ -24,34 +24,6 @@ variable "tags" {
   default = {}
 }
 
-# =============================
-# PostgreSQL / Database
-# =============================
-variable "pg_admin_user" {
-  type        = string
-  description = "Utilisateur admin PostgreSQL"
-}
-
-variable "pg_admin_password" {
-  type        = string
-  description = "Mot de passe admin PostgreSQL"
-  sensitive   = true
-}
-
-variable "pg_database" {
-  type    = string
-  default = "appdb"
-}
-
-variable "pg_sku_name" {
-  type    = string
-  default = "B_Standard_B1ms"
-}
-
-variable "db_host" {
-  type        = string
-  description = "Adresse du serveur PostgreSQL"
-}
 
 # =============================
 # AKS
@@ -140,6 +112,54 @@ variable "app_service_plan" {
   type = string
 }
 
-variable "postgres_user" {
-  type = string
+
+
+variable "cosmos_account_name" {
+  type        = string
+  description = "Nom du compte Cosmos DB"
+  default     = null
+}
+
+variable "cosmos_db_name" {
+  type        = string
+  default     = "turbodexdb"
+}
+
+variable "cosmos_container_name" {
+  type        = string
+  default     = "items"
+}
+
+variable "cosmos_container_pk" {
+  type        = string
+  default     = "/id"
+}
+
+variable "function_app_name" {
+  type        = string
+  default     = null
+}
+
+variable "function_runtime" {
+  type        = string
+  description = "Stack runtime Functions"
+  default     = "python" # "node" / "dotnet" / "java" / "powershell"
+}
+
+
+variable "app_service_name" {
+  description = "Nom de l'App Service (si utilisé)"
+  type        = string
+  default     = null
+}
+
+variable "backend_port" {
+  description = "Port backend utilisé par l'application"
+  type        = number
+}
+
+variable "acr_admin_password" {
+  description = "Mot de passe admin ACR (si admin_enabled = true)"
+  type        = string
+  sensitive   = true
 }
