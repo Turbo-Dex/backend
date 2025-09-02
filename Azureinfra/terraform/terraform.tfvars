@@ -1,4 +1,4 @@
-subscription_id = "c43ec34b-a7d8-48f3-8707-f22296559a82"
+subscription_id = "ea710538-3bbf-4569-9ac5-d08e62266a3c"
 project_name    = "turbodex"
 environment     = "staging"
 location        = "francecentral"
