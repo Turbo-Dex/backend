@@ -4,12 +4,12 @@
     "id": "Microsoft.Azure.Functions.ExtensionBundle",
     "version": "[3.*, 4.0.0)"
   },
-  "extensions": {
-    "queues": {
-      "messageEncoding": "None",
-      "maxDequeueCount": 1,
-      "visibilityTimeout": "00:00:15"
-    }
+  "queues": {
+    "messageEncoding": "Base64",
+    "maxDequeueCount": 5,
+    "visibilityTimeout": "00:00:15",
+    "batchSize": 16,
+    "newBatchThreshold": 64
   }
 }
 
