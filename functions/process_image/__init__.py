@@ -1,87 +1,55 @@
-# process_image/__init__.py
-import os, json, logging, traceback
+import json
+import logging
+import os
+from pathlib import Path
+from datetime import datetime
+
 import azure.functions as func
 
-# Facultatif: pour les tests, saute Mongo si non dispo
-MONGO_URI = os.environ.get("MONGO_URI", "mongodb://localhost:27017/turbodex")
-DB_NAME   = os.environ.get("DB_NAME", "turbodex")
-SKIP_MONGO = os.environ.get("MONGO_URI_SKIP", "1") == "1"  # par défaut ON en local
-
-RAW  = os.environ.get("AZURE_BLOB_CONTAINER_RAW", "raw")
-PROC = os.environ.get("AZURE_BLOB_CONTAINER_PROCESSED", "processed")
-
-from azure.storage.blob import BlobServiceClient, ContentSettings
-def _bsc():
-    cs = os.environ["AzureWebJobsStorage"]
-    return BlobServiceClient.from_connection_string(cs)
-
-def _db_or_none():
-    if SKIP_MONGO:
-        return None
-    try:
-        from pymongo import MongoClient
-        return MongoClient(MONGO_URI)[DB_NAME]
-    except Exception:
-        logging.warning("[process_image] Mongo unreachable, skip update")
-        return None
+# ⚠️ Ne crée PAS de clients au module-level avec os.environ["..."].
+# Utilise getenv + instancie dans main() = évite crash au import.
 
 def main(msg: func.QueueMessage) -> None:
+    # 1) Log brut du message (pour voir qu’on est bien entré dans la fonction)
     raw = msg.get_body().decode("utf-8", errors="replace")
-    logging.info("[process_image] message=%s", raw)
+    logging.info("[process_image] raw_message=%r", raw[:500])
 
-    # 1) parse json
+    # 2) Parse JSON
     try:
         data = json.loads(raw)
-        post_id   = data.get("post_id")
-        blob_name = data.get("blob_name")
-        if not blob_name:
-            logging.warning("[process_image] missing blob_name -> ack")
-            return
-    except Exception as e:
-        logging.exception("[process_image] invalid json: %s", e)
+    except Exception:
+        logging.exception("[process_image] invalid JSON -> ack (pas de poison)")
         return
 
-    # 2) tentative download du RAW (si absent -> on log et on ACK)
-    try:
-        bsc = _bsc()
-        raw_blob = bsc.get_blob_client(container=RAW, blob=blob_name)
-        raw_bytes = raw_blob.download_blob().readall()
-        in_ct = (raw_blob.get_blob_properties().content_settings.content_type
-                 or "application/octet-stream")
-        logging.info("[process_image] downloaded %s (%d bytes, %s)", blob_name, len(raw_bytes), in_ct)
-    except Exception as e:
-        logging.warning("[process_image] cannot download blob %s: %s\n%s",
-                        blob_name, e, traceback.format_exc())
-        return  # on ACK quand même pour éviter la poison
+    post_id = data.get("post_id")
+    blob_name = data.get("blob_name")
+    logging.info("[process_image] parsed post_id=%s blob_name=%s", post_id, blob_name)
 
-    # 3) “traitement” no-op et upload vers processed
-    try:
-        out_bytes = raw_bytes  # no-op
-        out_ct = in_ct if in_ct.startswith("image/") else "image/jpeg"
+    # 3) Envs (sans planter si manquants)
+    #    On accepte AzureWebJobsStorage ou StorageConn (fallback).
+    storage_cs = os.getenv("AzureWebJobsStorage") or os.getenv("StorageConn")
+    cont_raw = os.getenv("AZURE_BLOB_CONTAINER_RAW", "raw")
+    cont_out = os.getenv("AZURE_BLOB_CONTAINER_PROCESSED", "processed")
+    blur_api = os.getenv("BLUR_API")
+    predict_api = os.getenv("PREDICT_API")
 
-        proc_blob = bsc.get_blob_client(container=PROC, blob=blob_name)
-        proc_blob.upload_blob(out_bytes, overwrite=True,
-                              content_settings=ContentSettings(content_type=out_ct))
-        logging.info("[process_image] uploaded processed/%s", blob_name)
-    except Exception as e:
-        logging.warning("[process_image] cannot upload processed blob: %s\n%s",
-                        e, traceback.format_exc())
+    missing = []
+    if not storage_cs: missing.append("AzureWebJobsStorage/StorageConn")
+    if not cont_raw:   missing.append("AZURE_BLOB_CONTAINER_RAW")
+    if not cont_out:   missing.append("AZURE_BLOB_CONTAINER_PROCESSED")
+
+    if missing:
+        logging.error("[process_image] missing envs: %s -> ack (pas de poison)", ", ".join(missing))
         return
 
-    # 4) update Mongo si disponible (sinon on s’arrête là)
-    db = _db_or_none()
-    if not db or not post_id:
-        logging.info("[process_image] skip mongo update (db=%s, post_id=%s)", bool(db), post_id)
-        return
-
+    # 4) Marqueur local (utile pour prouver l’exécution sur ta machine)
     try:
-        from bson import ObjectId
-        oid = ObjectId(post_id)  # peut lever InvalidId
-        url = f"{_bsc().url.rstrip('/')}/{PROC}/{blob_name}"
-        db.posts.update_one({"_id": oid},
-                            {"$set": {"status": "processed", "processed_blob_url": url}})
-        logging.info("[process_image] mongo updated post=%s -> %s", post_id, url)
-    except Exception as e:
-        logging.warning("[process_image] mongo update failed: %s\n%s",
-                        e, traceback.format_exc())
-        # on ACK quand même
+        Path("/tmp/func_marker").write_text(f"ok {datetime.utcnow().isoformat()} blob={blob_name}\n", encoding="utf-8")
+    except Exception:
+        pass
+
+    # 5) No-op minimal : on ack directement (objectif: sortir du poison)
+    #    Une fois stable, on réactivera le vrai pipeline (download -> blur -> predict -> upload -> update mongo)
+    logging.info("[process_image] NO-OP success (ack).")
+    return
+
