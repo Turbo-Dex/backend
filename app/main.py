@@ -2,10 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import health, auth, uploads
-from app.routers import posts
+from app.routers import posts as posts_router
 from .routers.images import router as images_router
 from .deps import get_db
 from .utils.mongo_indexes import ensure_indexes
+from app.deps import get_db
+from app.utils.mongo_indexes import ensure_indexes
 
 app = FastAPI(title=settings.API_TITLE, version=settings.API_VERSION)
 
@@ -22,7 +24,7 @@ app.add_middleware(
 app.include_router(health.router,  prefix="/v1/health",  tags=["health"])
 app.include_router(auth.router,    prefix="/v1/auth",    tags=["auth"])
 app.include_router(uploads.router, prefix="/v1/uploads", tags=["uploads"])
-app.include_router(posts.router,   prefix="/v1/posts",   tags=["posts"])
+app.include_router(posts_router.router, prefix="/v1/posts", tags=["posts"])
 app.include_router(images_router,  prefix="/v1/images",  tags=["images"])
 
 @app.on_event("startup")

@@ -165,23 +165,62 @@ def main(msg: func.QueueMessage) -> None:
             logger.exception("failed to upload processed: %s", e)
             return
 
-        # 5) Update Mongo (optionnel)
-        cli, db = _mongo()
-        if (db is not None) and post_id and isinstance(post_id, str) and len(post_id) == 24 and (ObjectId is not None):
-            try:
-                url = proc_blob.url
-                update_doc = {
-                    "status": "processed",
-                    "processed_blob_url": url,
-                    "processed_at": __import__("datetime").datetime.utcnow()
-                }
-                if isinstance(tags_payload, dict):
-                    update_doc["ai"] = {"raw": tags_payload, "tags": tags_payload.get("tags")}
-                db.posts.update_one({"_id": ObjectId(post_id)}, {"$set": update_doc})
-                logger.info("mongo updated post_id=%s", post_id)
-            except Exception as e:
-                logger.warning("mongo update skipped: %s", e)
+        # 5) Update Mongo (post + turbodex)
+cli, db = _mongo()
+if db is not None and post_id and isinstance(post_id, str) and len(post_id) == 24 and (ObjectId is not None):
+    try:
+        # 5.1) Lire le post pour récupérer user_id
+        post = db.posts.find_one({"_id": ObjectId(post_id)}, {"_id":1, "user_id":1})
+        if not post:
+            logger.warning("mongo: post not found, id=%s", post_id)
+            return
 
-        logger.info("done.")
+        url = proc_blob.url
+
+        # 5.2) Construire vehicle/rarity depuis l’IA (si dispo)
+        vehicle = {"make": "Unknown", "model": "Unknown"}
+        rarity = "common"
+        vehicle_key = None
+        if isinstance(tags_payload, dict):
+            make = (tags_payload.get("vehicle_make") or tags_payload.get("make") or "").strip() or "Unknown"
+            model = (tags_payload.get("vehicle_model") or tags_payload.get("model") or "").strip() or "Unknown"
+            rarity = (tags_payload.get("rarity") or "common").lower()
+            vehicle = {"make": make, "model": model}
+            vehicle_key = f"{make}::{model}".lower()
+
+        # 5.3) Mettre à jour le post
+        update_doc = {
+            "status": "processed",
+            "processed_blob_url": url,
+            "processed_at": __import__("datetime").datetime.utcnow(),
+            "vehicle": vehicle,
+            "rarity": rarity
+        }
+        if isinstance(tags_payload, dict):
+            update_doc["ai"] = {"raw": tags_payload, "tags": tags_payload.get("tags")}
+
+        db.posts.update_one({"_id": ObjectId(post_id)}, {"$set": update_doc})
+
+        # 5.4) Upsert dans "turbodex" (collection perso)
+        if vehicle_key:
+            user_id = post["user_id"]
+            db.turbodex.update_one(
+                {"user_id": user_id, "vehicle_key": vehicle_key},
+                {
+                    "$setOnInsert": {
+                        "first_post_id": ObjectId(post_id),
+                        "captured_at": __import__("datetime").datetime.utcnow(),
+                    },
+                    "$set": {
+                        "make": vehicle.get("make"),
+                        "model": vehicle.get("model"),
+                        "last_post_id": ObjectId(post_id),
+                        "last_captured_at": __import__("datetime").datetime.utcnow(),
+                    }
+                },
+                upsert=True
+            )
+
+        logger.info("mongo updated post_id=%s; turbodex upsert=%s", post_id, bool(vehicle_key))
     except Exception as e:
-        logger.exception("FATAL (caught): %s", e)
+        logger.warning("mongo update skipped: %s", e)
