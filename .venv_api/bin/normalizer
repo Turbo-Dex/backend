@@ -1,4 +1,4 @@
-#!/home/neyz/Documents/HEIG/PDG/backend/.venv_api/bin/python3.11
+#!/home/neyz/Documents/HEIG/PDG/backend/.venv_api/bin/python
 # -*- coding: utf-8 -*-
 import re
 import sys
