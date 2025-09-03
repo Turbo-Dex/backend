@@ -1,14 +1,14 @@
 {
+  "scriptFile": "__init__.py",
   "bindings": [
     {
       "name": "msg",
       "type": "queueTrigger",
       "direction": "in",
       "queueName": "process-image",
-      "connection": "AzureWebJobsStorage"
+      "connection": "AzureWebJobsStorage",
+      "poisonMessageQueue": "process-image-poison"
     }
-  ],
-  "scriptFile": "__init__.py",
-  "entryPoint": "main"
+  ]
 }
 
