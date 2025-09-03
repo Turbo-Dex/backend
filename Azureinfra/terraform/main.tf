@@ -95,13 +95,18 @@ locals {
   function_app_name    = coalesce(var.function_app_name, "${var.project_name}-${var.environment}-func")
 }
 
+# Cosmos DB MongoDB (vCore)
 resource "azurerm_cosmosdb_account" "cosmos" {
   name                = local.cosmos_account_name
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
-  offer_type          = "Standard"
-  kind                = "GlobalDocumentDB"    # SQL API
-  free_tier_enabled = true
+  kind                = "MongoDB"          # SQL -> MongoDB
+  offer_type          = "Standard"         # vCore nécessite Standard
+  enable_multiple_write_locations = false
+
+  capabilities {
+    name = "EnableMongo"                   # MongoDB API
+  }
 
   consistency_policy {
     consistency_level = "Session"
@@ -112,27 +117,34 @@ resource "azurerm_cosmosdb_account" "cosmos" {
     failover_priority = 0
   }
 
-  capabilities {
-    name = "EnableServerless"                 # évite le provisionnement RU/s en dev
-  }
+  is_virtual_network_filter_enabled = false
 
   tags = var.tags
 }
 
-resource "azurerm_cosmosdb_sql_database" "db" {
+# Base MongoDB
+resource "azurerm_cosmosdb_mongo_database" "db" {
   name                = var.cosmos_db_name
   resource_group_name = azurerm_resource_group.rg.name
   account_name        = azurerm_cosmosdb_account.cosmos.name
 }
 
-resource "azurerm_cosmosdb_sql_container" "container" {
-  name                  = var.cosmos_container_name
-  resource_group_name   = azurerm_resource_group.rg.name
-  account_name          = azurerm_cosmosdb_account.cosmos.name
-  database_name         = azurerm_cosmosdb_sql_database.db.name
-  partition_key_paths   = [var.cosmos_container_pk]
-  partition_key_version = 2
+# Collection MongoDB
+resource "azurerm_cosmosdb_mongo_collection" "collection" {
+  name                = var.cosmos_container_name
+  resource_group_name = azurerm_resource_group.rg.name
+  account_name        = azurerm_cosmosdb_account.cosmos.name
+  database_name       = azurerm_cosmosdb_mongo_database.db.name
+  throughput          = 400
+  shard_key           = "_id"
+
+  index {
+    keys = ["_id"]
+  }
 }
+
+
+
 
 
 # Observabilité
@@ -183,23 +195,22 @@ resource "azurerm_linux_function_app" "func" {
     }
   }
 
-  app_settings = {
-    # Observabilité
-    APPINSIGHTS_INSTRUMENTATIONKEY        = azurerm_application_insights.appi.instrumentation_key
-    APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.appi.connection_string
-    FUNCTIONS_WORKER_RUNTIME              = var.function_runtime
-    WEBSITE_RUN_FROM_PACKAGE              = "1"
+app_settings = {
+  APPINSIGHTS_INSTRUMENTATIONKEY        = azurerm_application_insights.appi.instrumentation_key
+  APPLICATIONINSIGHTS_CONNECTION_STRING = azurerm_application_insights.appi.connection_string
+  FUNCTIONS_WORKER_RUNTIME              = var.function_runtime
+  WEBSITE_RUN_FROM_PACKAGE              = "1"
 
-    # Cosmos
-    COSMOS_ENDPOINT = azurerm_cosmosdb_account.cosmos.endpoint
-    COSMOS_KEY      = azurerm_cosmosdb_account.cosmos.primary_key
-    COSMOS_DB       = azurerm_cosmosdb_sql_database.db.name
-    COSMOS_CONTAINER= azurerm_cosmosdb_sql_container.container.name
+  # Cosmos MongoDB vCore
+  COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.cosmos.connection_strings[0]
+  COSMOS_DB                = azurerm_cosmosdb_mongo_database.db.name
+  COSMOS_COLLECTION        = azurerm_cosmosdb_mongo_collection.collection.name
 
-    # Blob (existant)
-    BLOB_CONNECTION_STRING = azurerm_storage_account.sa.primary_connection_string
-    BLOB_CONTAINER_IMAGES  = azurerm_storage_container.images.name
-  }
+  # Blob
+  BLOB_CONNECTION_STRING = azurerm_storage_account.sa.primary_connection_string
+  BLOB_CONTAINER_IMAGES  = azurerm_storage_container.images.name
+}
+
 
   tags = var.tags
 }

@@ -1,11 +1,12 @@
 ##########################################################
-# Kubernetes Secret pour ACR + DB
+# Kubernetes Secret pour ACR + MongoDB vCore
 ##########################################################
 resource "kubernetes_secret" "app_secrets" {
   metadata {
     name      = "app-secrets"
     namespace = "default"
   }
+
   data = {
     DOCKER_REGISTRY_SERVER_URL      = var.acr_login_server
     DOCKER_REGISTRY_SERVER_USERNAME = azurerm_container_registry.acr.admin_username
@@ -14,12 +15,13 @@ resource "kubernetes_secret" "app_secrets" {
     STORAGE_ACCOUNT        = var.storage_account_name
     BLOB_CONNECTION_STRING = azurerm_storage_account.sa.primary_connection_string
 
-    COSMOS_ENDPOINT  = azurerm_cosmosdb_account.cosmos.endpoint
-    COSMOS_KEY       = azurerm_cosmosdb_account.cosmos.primary_key
-    COSMOS_DB        = azurerm_cosmosdb_sql_database.db.name
-    COSMOS_CONTAINER = azurerm_cosmosdb_sql_container.container.name
+    # Cosmos MongoDB vCore
+    COSMOS_CONNECTION_STRING = azurerm_cosmosdb_account.cosmos.connection_strings[0]
+    COSMOS_DB                = azurerm_cosmosdb_mongo_database.db.name
+    COSMOS_COLLECTION        = azurerm_cosmosdb_mongo_collection.collection.name
   }
 }
+
 
 ##########################################################
 # Deployment Blur IA
