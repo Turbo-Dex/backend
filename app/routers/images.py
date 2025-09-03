@@ -1,18 +1,19 @@
 # app/routers/images.py
 from __future__ import annotations
 
+import json
 import logging
 import os
 import re
-import json
 from datetime import datetime, timezone
-from typing import Optional
+from typing import Optional, List
 from uuid import uuid4
 
 from fastapi import APIRouter, UploadFile, File, HTTPException, status
 
 from azure.storage.blob import BlobServiceClient, ContentSettings
-from azure.storage.queue import QueueClient, TextBase64EncodePolicy
+from azure.storage.queue import QueueClient
+from azure.storage.queue._message_encoding import TextBase64EncodePolicy
 
 from app.config import settings
 
@@ -25,8 +26,8 @@ router = APIRouter()
 def _conn_str() -> str:
     """
     Ordre de priorité :
-      1) settings.AZURE_STORAGE_CONN (si défini)
-      2) env AzureWebJobsStorage (💡 identique à la Function)
+      1) settings.AZURE_STORAGE_CONN
+      2) env AzureWebJobsStorage
       3) env StorageConn
       4) fallback (AZURE_STORAGE_ACCOUNT + AZURE_STORAGE_KEY)
     """
@@ -89,7 +90,7 @@ QUEUE_NAME = getattr(settings, "AZURE_QUEUE_NAME", "process-image") or "process-
 
 
 # ------------------------------
-# Endpoints
+# Diag
 # ------------------------------
 
 @router.get("/diag")
@@ -101,17 +102,35 @@ def images_diag():
     )
     return {
         "storage_conn_present": bool(cs),
-        "account_hint": getattr(settings, "AZURE_STORAGE_ACCOUNT", None) or os.getenv("AZURE_STORAGE_ACCOUNT"),
+        "account_hint": _account_from_conn_string(cs),
         "raw_container": RAW_CONT,
         "processed_container": PROC_CONT,
         "queue": QUEUE_NAME,
     }
 
 
+@router.get("/diag/queue-peek")
+def diag_queue_peek(limit: int = 3):
+    """Petit coup d'œil non destructif dans la queue (max 32 côté service)."""
+    conn = _conn_str()
+    q = QueueClient.from_connection_string(
+        conn,
+        queue_name=QUEUE_NAME,
+        message_encode_policy=TextBase64EncodePolicy(),
+    )
+    msgs = list(q.peek_messages(max_messages=min(max(limit, 1), 32)))
+    # On ne retourne pas le contenu exact pour éviter d’exposer des payloads en clair
+    return {"queue": QUEUE_NAME, "peek_count": len(msgs)}
+
+
+# ------------------------------
+# Endpoints
+# ------------------------------
+
 @router.post("/upload", status_code=status.HTTP_201_CREATED)
 async def upload_image(
     file: UploadFile = File(..., description="Image à uploader"),
-    post_id: Optional[str] = None,  # si tu as un _id Mongo côté front, tu peux le passer ici
+    post_id: Optional[str] = None,
 ):
     if not file or not file.filename:
         raise HTTPException(status_code=400, detail="Aucun fichier reçu.")
@@ -123,11 +142,11 @@ async def upload_image(
     ext = _guess_ext(file.content_type) or os.path.splitext(file.filename)[1] or ".jpg"
     blob_name = f"{today}/{uuid4().hex}{ext}"
 
-    # Connexion Storage (identique à la Function si AzureWebJobsStorage est défini)
+    # Connexion Storage
     conn = _conn_str()
     account = _account_from_conn_string(conn)
 
-    # Upload dans le conteneur RAW
+    # Upload dans RAW
     bsc = BlobServiceClient.from_connection_string(conn)
     raw_client = bsc.get_blob_client(container=RAW_CONT, blob=blob_name)
 
@@ -141,8 +160,12 @@ async def upload_image(
         content_settings=ContentSettings(content_type=file.content_type),
     )
 
-    # Enqueue le message pour la Function (création idempotente de la queue)
-    q = QueueClient.from_connection_string(conn, queue_name=QUEUE_NAME,message_encode_policy=TextBase64EncodePolicy())
+    # Enqueue le message pour la Function (Base64 requis par host.json)
+    q = QueueClient.from_connection_string(
+        conn,
+        queue_name=QUEUE_NAME,
+        message_encode_policy=TextBase64EncodePolicy(),
+    )
     try:
         q.create_queue()
     except Exception:
@@ -152,9 +175,16 @@ async def upload_image(
         "post_id": (post_id or "000000000000000000000000"),
         "blob_name": blob_name,
     }
-    send_result = q.send_message(json.dumps(payload))  # le SDK gère l’encodage Base64
-    msg_id = getattr(send_result, "id", None)
-    logging.info("[images.upload] sent queue msg id=%s queue=%s blob=%s", msg_id, QUEUE_NAME, blob_name)
+
+    try:
+        send_result = q.send_message(json.dumps(payload))
+        msg_id = getattr(send_result, "id", None)  # string attendue
+    except Exception as e:
+        logging.exception("Queue send_message failed")
+        raise HTTPException(status_code=502, detail=f"Queue send failed: {e}")
+
+    logging.info("[images.upload] sent queue msg id=%s queue=%s blob=%s",
+                 msg_id, QUEUE_NAME, blob_name)
 
     return {
         "ok": True,
@@ -162,7 +192,7 @@ async def upload_image(
         "raw_url": _public_blob_url(account, RAW_CONT, blob_name),
         "processed_url_hint": _public_blob_url(account, PROC_CONT, blob_name),
         "queue": QUEUE_NAME,
-        "message_id": msg_id if hasattr(msg_id, "id") else None,
+        "message_id": msg_id,     # <-- FIX: renvoi direct de la string
         "message_payload": payload,
         "storage_account": account,
     }
@@ -171,7 +201,8 @@ async def upload_image(
 @router.get("/status")
 def status_image(blob_name: str):
     """
-    Vérifie si l’image traitée existe dans le conteneur 'processed'.
+    Vérifie si l’image traitée existe dans 'processed'.
+    Tente plusieurs suffixes si besoin (.png/.jpg) car la Function peut ré-encoder.
     """
     if not blob_name or "/" not in blob_name:
         raise HTTPException(status_code=400, detail="blob_name invalide")
@@ -179,12 +210,24 @@ def status_image(blob_name: str):
     conn = _conn_str()
     account = _account_from_conn_string(conn)
     bsc = BlobServiceClient.from_connection_string(conn)
-    proc_client = bsc.get_blob_client(container=PROC_CONT, blob=blob_name)
-    exists = proc_client.exists()
 
+    # Essaye tel quel + variantes d’extension
+    candidates: List[str] = [blob_name]
+    if not os.path.splitext(blob_name)[1]:
+        candidates += [f"{blob_name}.png", f"{blob_name}.jpg", f"{blob_name}.jpeg"]
+
+    for name in candidates:
+        proc_client = bsc.get_blob_client(container=PROC_CONT, blob=name)
+        if proc_client.exists():
+            return {
+                "blob_name": name,
+                "processed_exists": True,
+                "processed_url": _public_blob_url(account, PROC_CONT, name),
+            }
+
+    # Rien trouvé
     return {
         "blob_name": blob_name,
-        "processed_exists": bool(exists),
+        "processed_exists": False,
         "processed_url": _public_blob_url(account, PROC_CONT, blob_name),
     }
-
