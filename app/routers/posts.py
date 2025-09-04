@@ -194,25 +194,28 @@ async def create_post(
 
 
 @router.get("/{post_id}")
-async def get_post(
-    post_id: str,
-    user_id: str = Depends(get_current_user_id),
-    db=Depends(get_db),
-):
+async def get_post(post_id: str, user_id: str = Depends(get_current_user_id), db=Depends(get_db)):
     try:
         _id = ObjectId(post_id)
     except Exception:
         raise HTTPException(400, "bad_post_id")
+
+    # include 'ai' in projection so we can return tags if available
     p = await db.posts.find_one(
         {"_id": _id},
-        {"_id": 1, "status": 1, "processed_blob_url": 1, "vehicle": 1, "rarity": 1},
+        {"_id": 1, "status": 1, "processed_blob_url": 1, "vehicle": 1, "rarity": 1, "ai": 1}
     )
     if not p:
         raise HTTPException(404, "post_not_found")
+
+    ai = p.get("ai") or {}
+    tags = (ai.get("tags") or [])[:8]  # keep it short for UI
+
     return {
         "id": str(_id),
         "status": p.get("status", "pending"),
         "processed_blob_url": p.get("processed_blob_url"),
-        "vehicle": p.get("vehicle"),
+        "vehicle": p.get("vehicle") or {"make": "Unknown", "model": "Unknown"},
         "rarity": p.get("rarity", "common"),
+        "tags": tags,
     }
