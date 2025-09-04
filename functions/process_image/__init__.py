@@ -147,6 +147,17 @@ def main(msg: func.QueueMessage) -> None:
                     logger.error("predict HTTP %s: %s", r.status_code, (r.text or "")[:500])
                     raise
                 tags_payload = r.json()
+                vehicle = None
+                rarity = None
+                try:
+                    if isinstance(tags_payload, dict):
+                        v = tags_payload.get("vehicle") or {}
+                        mk = (v.get("make") or v.get("brand") or "Unknown")
+                        md = (v.get("model") or "Unknown")
+                        vehicle = {"make": mk, "model": md}
+                        rarity = tags_payload.get("rarity")
+                except Exception:
+                    pass
                 if isinstance(tags_payload, dict):
                     logger.info("predict ok keys=%s", list(tags_payload.keys()))
                 else:
@@ -192,13 +203,15 @@ def main(msg: func.QueueMessage) -> None:
                     update_doc = {
                         "status": "processed",
                         "processed_blob_url": url,
-                        "processed_at": __import__("datetime").datetime.utcnow(),
-                        "vehicle": vehicle,
-                        "rarity": rarity,
+                        "processed_at": __import__("datetime").datetime.utcnow()
                     }
+                    if vehicle: update_doc["vehicle"] = vehicle
+                    if rarity:  update_doc["rarity"]  = rarity
                     if isinstance(tags_payload, dict):
-                        update_doc["ai"] = {"raw": tags_payload, "tags": tags_payload.get("tags")}
-
+                        update_doc["ai"] = {
+                            "raw": tags_payload,
+                            "tags": tags_payload.get("tags")
+                        }
                     db.posts.update_one({"_id": ObjectId(post_id)}, {"$set": update_doc})
 
                     if vehicle_key:

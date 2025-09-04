@@ -2,12 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from .config import settings
 from .routers import health, auth, uploads
-from app.routers import posts as posts_router
-from .routers.images import router as images_router
 from .deps import get_db
 from .utils.mongo_indexes import ensure_indexes
 from app.deps import get_db
 from app.utils.mongo_indexes import ensure_indexes
+from app.routers import posts as posts_router
+from .routers.images import router as images_router
 
 app = FastAPI(title=settings.API_TITLE, version=settings.API_VERSION)
 
@@ -16,7 +16,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
-    allow_methods=["GET","POST","DELETE","PATCH","OPTIONS"],
+    allow_methods=["*"],
     allow_headers=["*"],
 )
 
