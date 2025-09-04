@@ -1,6 +1,5 @@
 # This file must be used with "source bin/activate.csh" *from csh*.
 # You cannot run it directly.
-
 # Created by Davide Di Blasi <davidedb@gmail.com>.
 # Ported to Python 3.3 venv by Andrew Svetlov <andrew.svetlov@gmail.com>
 
@@ -13,13 +12,13 @@ setenv VIRTUAL_ENV /home/neyz/Documents/HEIG/PDG/backend/.venv_api
 
 set _OLD_VIRTUAL_PATH="$PATH"
 setenv PATH "$VIRTUAL_ENV/"bin":$PATH"
-setenv VIRTUAL_ENV_PROMPT .venv_api
 
 
 set _OLD_VIRTUAL_PROMPT="$prompt"
 
 if (! "$?VIRTUAL_ENV_DISABLE_PROMPT") then
-    set prompt = "(".venv_api") $prompt:q"
+    set prompt = '(.venv_api) '"$prompt"
+    setenv VIRTUAL_ENV_PROMPT '(.venv_api) '
 endif
 
 alias pydoc python -m pydoc

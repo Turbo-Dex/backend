@@ -25,7 +25,7 @@ if not logger.handlers:
     formatter = logging.Formatter("[%(name)s] %(levelname)s: %(message)s")
     handler.setFormatter(formatter)
     logger.addHandler(handler)
-logger.setLevel(logging.INFO)  # Mets WARNING si tu veux encore moins de bruit
+logger.setLevel(logging.INFO)
 
 # ---------- Config ----------
 RAW_CONT = os.getenv("AZURE_BLOB_CONTAINER_RAW", "raw") or "raw"
@@ -55,9 +55,9 @@ def _mongo():
         logger.warning("Mongo unreachable: %s", e)
         return None, None
 
-def _http_post_image(url: str, field_name: str, filename: str, content: bytes, mime: Optional[str] = None, accept: Optional[str] = None):
-    if not mime:
-        mime = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+def _http_post_image(url: str, field_name: str, filename: str, content: bytes,
+                     mime: Optional[str] = None, accept: Optional[str] = None):
+    mime = mime or (mimetypes.guess_type(filename)[0] or "application/octet-stream")
     files = {field_name: (filename, content, mime)}
     headers = {}
     if accept:
@@ -79,8 +79,9 @@ def _safe_json_loads(s: str) -> Optional[dict]:
 
 # ---------- Main ----------
 def main(msg: func.QueueMessage) -> None:
+    # Ne jamais lever non-catché : on catch tout à ce niveau
     try:
-        # 0) Lecture du message
+        # 0) Lire le message
         try:
             raw = msg.get_body().decode("utf-8", errors="replace")
         except Exception as e:
@@ -99,7 +100,7 @@ def main(msg: func.QueueMessage) -> None:
             return
         logger.info("parsed post_id=%s blob_name=%s", post_id, blob_name)
 
-        # 1) Télécharge RAW
+        # 1) Télécharger RAW
         try:
             bsc = _blob_client()
             raw_blob = bsc.get_blob_client(container=RAW_CONT, blob=blob_name)
@@ -110,8 +111,8 @@ def main(msg: func.QueueMessage) -> None:
             return
 
         processed_bytes = raw_bytes
-        blur_mime = None
-        tags_payload = None
+        blur_mime: Optional[str] = None
+        tags_payload: Optional[dict] = None
 
         # 2) Blur (optionnel)
         if BLUR_URL:
@@ -122,7 +123,7 @@ def main(msg: func.QueueMessage) -> None:
                     filename=os.path.basename(blob_name) or "image.jpg",
                     content=raw_bytes,
                     mime="image/jpeg",
-                    accept="image/png"
+                    accept="image/png",
                 )
                 processed_bytes = r.content
                 blur_mime = r.headers.get("Content-Type") or "image/png"
@@ -140,7 +141,11 @@ def main(msg: func.QueueMessage) -> None:
                     files={"file": (os.path.basename(blob_name) or "image.png", processed_bytes, predict_mime)},
                     timeout=HTTP_TIMEOUT,
                 )
-                r.raise_for_status()
+                try:
+                    r.raise_for_status()
+                except Exception:
+                    logger.error("predict HTTP %s: %s", r.status_code, (r.text or "")[:500])
+                    raise
                 tags_payload = r.json()
                 if isinstance(tags_payload, dict):
                     logger.info("predict ok keys=%s", list(tags_payload.keys()))
@@ -153,12 +158,11 @@ def main(msg: func.QueueMessage) -> None:
         # 4) Upload PROCESSED
         try:
             proc_blob = bsc.get_blob_client(container=PROC_CONT, blob=blob_name)
-            # déduire content_type
             content_type = blur_mime or "image/jpeg"
             proc_blob.upload_blob(
                 processed_bytes,
                 overwrite=True,
-                content_settings=ContentSettings(content_type=content_type)
+                content_settings=ContentSettings(content_type=content_type),
             )
             logger.info("uploaded processed %s/%s (ct=%s)", PROC_CONT, blob_name, content_type)
         except Exception as e:
@@ -166,61 +170,59 @@ def main(msg: func.QueueMessage) -> None:
             return
 
         # 5) Update Mongo (post + turbodex)
-cli, db = _mongo()
-if db is not None and post_id and isinstance(post_id, str) and len(post_id) == 24 and (ObjectId is not None):
-    try:
-        # 5.1) Lire le post pour récupérer user_id
-        post = db.posts.find_one({"_id": ObjectId(post_id)}, {"_id":1, "user_id":1})
-        if not post:
-            logger.warning("mongo: post not found, id=%s", post_id)
-            return
+        cli, db = _mongo()
+        if db is not None and post_id and isinstance(post_id, str) and len(post_id) == 24 and (ObjectId is not None):
+            try:
+                post = db.posts.find_one({"_id": ObjectId(post_id)}, {"_id": 1, "user_id": 1})
+                if not post:
+                    logger.warning("mongo: post not found, id=%s", post_id)
+                else:
+                    url = proc_blob.url
 
-        url = proc_blob.url
+                    vehicle = {"make": "Unknown", "model": "Unknown"}
+                    rarity = "common"
+                    vehicle_key = None
+                    if isinstance(tags_payload, dict):
+                        make = (tags_payload.get("vehicle_make") or tags_payload.get("make") or "").strip() or "Unknown"
+                        model = (tags_payload.get("vehicle_model") or tags_payload.get("model") or "").strip() or "Unknown"
+                        rarity = (tags_payload.get("rarity") or "common").lower()
+                        vehicle = {"make": make, "model": model}
+                        vehicle_key = f"{make}::{model}".lower()
 
-        # 5.2) Construire vehicle/rarity depuis l’IA (si dispo)
-        vehicle = {"make": "Unknown", "model": "Unknown"}
-        rarity = "common"
-        vehicle_key = None
-        if isinstance(tags_payload, dict):
-            make = (tags_payload.get("vehicle_make") or tags_payload.get("make") or "").strip() or "Unknown"
-            model = (tags_payload.get("vehicle_model") or tags_payload.get("model") or "").strip() or "Unknown"
-            rarity = (tags_payload.get("rarity") or "common").lower()
-            vehicle = {"make": make, "model": model}
-            vehicle_key = f"{make}::{model}".lower()
-
-        # 5.3) Mettre à jour le post
-        update_doc = {
-            "status": "processed",
-            "processed_blob_url": url,
-            "processed_at": __import__("datetime").datetime.utcnow(),
-            "vehicle": vehicle,
-            "rarity": rarity
-        }
-        if isinstance(tags_payload, dict):
-            update_doc["ai"] = {"raw": tags_payload, "tags": tags_payload.get("tags")}
-
-        db.posts.update_one({"_id": ObjectId(post_id)}, {"$set": update_doc})
-
-        # 5.4) Upsert dans "turbodex" (collection perso)
-        if vehicle_key:
-            user_id = post["user_id"]
-            db.turbodex.update_one(
-                {"user_id": user_id, "vehicle_key": vehicle_key},
-                {
-                    "$setOnInsert": {
-                        "first_post_id": ObjectId(post_id),
-                        "captured_at": __import__("datetime").datetime.utcnow(),
-                    },
-                    "$set": {
-                        "make": vehicle.get("make"),
-                        "model": vehicle.get("model"),
-                        "last_post_id": ObjectId(post_id),
-                        "last_captured_at": __import__("datetime").datetime.utcnow(),
+                    update_doc = {
+                        "status": "processed",
+                        "processed_blob_url": url,
+                        "processed_at": __import__("datetime").datetime.utcnow(),
+                        "vehicle": vehicle,
+                        "rarity": rarity,
                     }
-                },
-                upsert=True
-            )
+                    if isinstance(tags_payload, dict):
+                        update_doc["ai"] = {"raw": tags_payload, "tags": tags_payload.get("tags")}
 
-        logger.info("mongo updated post_id=%s; turbodex upsert=%s", post_id, bool(vehicle_key))
+                    db.posts.update_one({"_id": ObjectId(post_id)}, {"$set": update_doc})
+
+                    if vehicle_key:
+                        user_id = post["user_id"]
+                        db.turbodex.update_one(
+                            {"user_id": user_id, "vehicle_key": vehicle_key},
+                            {
+                                "$setOnInsert": {
+                                    "first_post_id": ObjectId(post_id),
+                                    "captured_at": __import__("datetime").datetime.utcnow(),
+                                },
+                                "$set": {
+                                    "make": vehicle.get("make"),
+                                    "model": vehicle.get("model"),
+                                    "last_post_id": ObjectId(post_id),
+                                    "last_captured_at": __import__("datetime").datetime.utcnow(),
+                                },
+                            },
+                            upsert=True,
+                        )
+                    logger.info("mongo updated post_id=%s; turbodex upsert=%s", post_id, bool(vehicle_key))
+            except Exception as e:
+                logger.warning("mongo update skipped: %s", e)
+
+        logger.info("done.")
     except Exception as e:
-        logger.warning("mongo update skipped: %s", e)
+        logger.exception("FATAL (caught): %s", e)

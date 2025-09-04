@@ -25,7 +25,7 @@ def _account_info_from_conn_str(cs: str) -> tuple[str | None, str | None]:
 def _svc() -> BlobServiceClient:
     global _client
     if _client is None:
-        _client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONNECTION_STRING)
+        _client = BlobServiceClient.from_connection_string(settings.AZURE_STORAGE_CONN)
     return _client
 
 def _account_info_from_conn_str(cs: str) -> tuple[str | None, str | None]:
@@ -51,7 +51,7 @@ def create_sas_for_upload(blob_name: str, mime: str, size_max_mb: int, minutes: 
         raise ValueError("bad_mime")
 
     # Récupère AccountName/AccountKey depuis la connection string
-    account_name, account_key = _account_info_from_conn_str(settings.AZURE_STORAGE_CONNECTION_STRING)
+    account_name, account_key = _account_info_from_conn_str(settings.AZURE_STORAGE_CONN)
     if not account_name or not account_key:
         raise ValueError("missing_account_key")
 

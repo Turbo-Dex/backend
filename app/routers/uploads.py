@@ -17,6 +17,12 @@ async def get_sas(req: SASRequest, user_id: str = Depends(get_current_user_id)):
         raise HTTPException(status_code=413, detail="payload_too_large")
     try:
         blob_name = create_blob_name(req.mime)
-        return create_sas_for_upload(blob_name, req.mime, size_mb)
+        raw = create_sas_for_upload(blob_name, req.mime, size_mb)
+        # Adapter la casse pour le front Flutter
+        return {
+            "sasUrl":   raw["sas_url"],
+            "blobName": raw["blob_name"],
+            "maxSize":  raw["max_size"],
+        }
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))

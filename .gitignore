@@ -22,5 +22,14 @@ node_modules/
 *.tfstate*
 *.tfstate.backup
 .*
-tfplandb/mongosh-2.2.10-linux-x64.tgz
-db/mongosh-2.2.10-linux-x64/
+
+# binaires MongoDB
+db/mongosh-*.tgz
+db/mongosh-*/ 
+*.so
+*.dll
+*.exe
+*.tar.gz
+*.zip
+*.7z
+
