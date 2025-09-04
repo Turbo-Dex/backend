@@ -22,4 +22,5 @@ node_modules/
 *.tfstate*
 *.tfstate.backup
 .*
-tfplan
+tfplandb/mongosh-2.2.10-linux-x64.tgz
+db/mongosh-2.2.10-linux-x64/
