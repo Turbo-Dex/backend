@@ -90,7 +90,14 @@ async def reset(body: ResetRequest, db=Depends(get_db)):
     await db.users.update_one({"_id": user["_id"]}, {"$set":{"password_hash": hash_password(body.new_password)}})
     return {"ok": True}
     
-@router.get("/me-test")
-async def me_test(user_id: str = Depends(get_current_user_id)):
-    return {"user_id": user_id}
-
+@router.get("/me")
+async def me(user_id: str = Depends(get_current_user_id), db = Depends(get_db)):
+    user = await db.users.find_one({"_id": ObjectId(user_id)})
+    if not user:
+        raise HTTPException(status_code=404, detail="user_not_found")
+    return {
+        "id": str(user["_id"]),
+        "username": user["username"],
+        "display_name": user.get("display_name"),
+        "avatar_url": user.get("avatar_url"),
+    }
