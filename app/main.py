@@ -26,6 +26,7 @@ app.include_router(auth.router,    prefix="/v1/auth",    tags=["auth"])
 app.include_router(uploads.router, prefix="/v1/uploads", tags=["uploads"])
 app.include_router(posts_router.router, prefix="/v1/posts", tags=["posts"])
 app.include_router(images_router,  prefix="/v1/images",  tags=["images"])
+app.include_router(posts_router.router, prefix="/posts", tags=["posts"])  
 
 @app.on_event("startup")
 async def on_startup():
